@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bingo 75 — Juego en casa (Web)</title>
+<style>
+  :root{
+    --bg:#0f1218; --panel:#171b22; --panel2:#1f2530; --accent:#f0b90b; --text:#eef2f7; --muted:#9aa4b2;
+    --win:#2ecc71; --warn:#e74c3c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:linear-gradient(180deg,#0b0e13,#121722 40%,#0b0e13);color:var(--text);overflow-x:hidden}
+  header{padding:20px 16px;border-bottom:1px solid #262b36;background:rgba(0,0,0,.2);position:sticky;top:0;backdrop-filter:blur(6px);z-index:5}
+  h1{margin:0;font-size:clamp(20px,3.6vw,32px);letter-spacing:.5px}
+  .wrap{max-width:1200px;margin:0 auto;padding:16px}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-block:10px}
+  .card, .panel{background:var(--panel);border:1px solid #252b36;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .panel{padding:14px}
+  button, select, input[type="number"], input[type="checkbox"]+label{font:inherit}
+  button{cursor:pointer;border:1px solid #2a3140;background:var(--panel2);color:var(--text);padding:10px 14px;border-radius:12px}
+  button.primary{background:linear-gradient(180deg,#f6c90e,#f0b90b);color:#1a1a1a;border:none;font-weight:700}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .badge{display:inline-flex;align-items:center;gap:6px;background:#121722;border:1px solid #2a3140;border-radius:999px;padding:6px 10px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(5,minmax(36px,1fr));gap:6px;margin-top:10px;width:100%}
+  .cell{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid #2c3444;background:#121722;color:#dfe7f3;font-weight:600;user-select:none;transition:.15s;min-width:36px}
+  .cell.mark{background:#263349;border-color:#3b6cff}
+  .cell.hit{background:#24452f;border-color:#2ecc71}
+  .cell.free{background:#2a2f3a;color:#9fb3c8;border-style:dashed}
+  .board{display:grid;gap:6px;width:max-content;grid-template-columns:repeat(15,52px)}
+  .hscroll{overflow-x:auto;padding-bottom:6px}
+  @media (max-width: 600px){
+    .board{grid-template-columns:repeat(15,46px)}
+  }
+  .board .num{padding:10px 0;text-align:center;border-radius:10px;border:1px solid #2a3140;background:#121722}
+  .board .num.drawn{background:#24314a;border-color:#3b6cff}
+  .last{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{padding:8px 10px;border-radius:10px;background:#24314a;border:1px solid #3b6cff}
+  .stack{display:grid;gap:8px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:12px}
+  .card{min-width:0}
+  .card header{position:static;border:none;padding:10px 12px;background:transparent}
+  .card h3{margin:0;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+  .card .grid{gap:6px;padding:12px}
+  .note{color:var(--muted);font-size:13px}
+  .winner{outline:3px solid var(--win);box-shadow:0 0 0 4px rgba(46,204,113,.25)}
+  .bingo{outline:3px solid var(--warn);box-shadow:0 0 0 4px rgba(231,76,60,.35)}
+  /* Modal */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);z-index:50}
+  .modal.show{display:flex}
+  .modal .box{background:var(--panel);border:1px solid #2a3140;border-radius:18px;padding:22px 26px;text-align:center;max-width:520px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .modal h2{margin:.2rem 0 1rem;font-size:clamp(26px,4.2vw,42px)}
+  .modal .who{color:var(--muted);margin-bottom:14px}
+  .modal .actions{display:flex;gap:10px;justify-content:center;margin-top:8px}
+  @keyframes pop{0%{transform:scale(.9);opacity:.5}100%{transform:scale(1);opacity:1}}
+  .modal .box{animation:pop .18s ease-out}
+  .footer{color:#7f8a9a;text-align:center;padding:22px}
+  .sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>🎱 Bingo 75 — Juego en casa</h1>
+      <div class="note">Genera cartones, marca casillas con clic y realiza el sorteo en vivo desde esta misma página.</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="controls">
+      <div class="panel stack">
+        <strong>Sorteo</strong>
+        <div class="stats">
+          <span class="badge">Extraídos: <b id="count">0</b>/75</span>
+          <span class="badge">Último: <b id="last">—</b></span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="btnDraw" class="primary">Sacar número</button>
+          <button id="btnUndo">Deshacer</button>
+          <button id="btnReset">Reiniciar</button>
+          <label class="badge" style="cursor:pointer">
+            <input id="autoMark" type="checkbox" checked> Auto‑marcar
+          </label>
+        </div>
+        <div class="last" id="last5" aria-live="polite"></div>
+      </div>
+
+      <div class="panel stack">
+        <strong>Cartones</strong>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label>Jugadores: <input id="players" type="number" min="1" max="24" value="9" style="width:80px"></label>
+          <button id="btnGen">Generar cartones</button>
+          <button id="btnPrint">Imprimir / PDF</button>
+        </div>
+        <div class="note">El centro es <b>FREE</b>. Puedes escribir nombres en cada cartón.</div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:12px">
+      <strong>Tablero (1–75)</strong>
+      <div class="hscroll"><div class="board" id="board" aria-live="polite"></div></div>
+    </section>
+
+    <section class="cards" id="cards"></section>
+
+    <!-- Modal Bingo -->
+    <div class="modal" id="bingoModal" role="dialog" aria-modal="true" aria-labelledby="bingoTitle" aria-hidden="true">
+      <div class="box">
+        <h2 id="bingoTitle">🎉 ¡BINGO!</h2>
+        <div class="who" id="bingoWho">Tenemos ganador</div>
+        <div class="actions">
+          <button id="btnCloseModal" class="primary">Aceptar</button>
+          <button id="btnContinue">Seguir jugando</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer">Hecho con ♥. Funciona completamente offline.</p>
+  </main>
+
+<script>
+// ======= Utilidades =======
+const rand = (min,max)=> Math.floor(Math.random()*(max-min+1))+min;
+const pick = (start,end,count)=>{
+  const nums = Array.from({length:end-start+1},(_,i)=>start+i);
+  for(let i=nums.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[nums[i],nums[j]]=[nums[j],nums[i]]}
+  return nums.slice(0,count).sort((a,b)=>a-b);
+};
+
+// ======= Estado global =======
+const state = {
+  drawn: new Set(), // números ya extraídos
+  order: [],        // orden de extracción
+  cards: [],        // lista de cartones {id,name,grid[5][5],marks[5][5],bingo,line}
+};
+
+// ======= Generación de un cartón =======
+function makeCard(id){
+  const B = pick(1,15,5);
+  const I = pick(16,30,5);
+  const N = pick(31,45,5);
+  const G = pick(46,60,5);
+  const O = pick(61,75,5);
+  const cols=[B,I,N,G,O];
+  const grid=[...Array(5)].map((_,r)=>cols.map(col=>col[r]));
+  grid[2][2] = 'FREE';
+  const marks=[...Array(5)].map(()=>Array(5).fill(false));
+  marks[2][2] = true; // FREE marcado
+  return {id, name:`Jugador ${id}`, grid, marks, line:false, full:false, announced:false};
+}
+
+// ======= Render tablero 1-75 =======
+function renderBoard(){
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  for(let n=1;n<=75;n++){
+    const div=document.createElement('div');
+    div.className='num'+(state.drawn.has(n)?' drawn':'');
+    div.textContent=n;
+    board.appendChild(div);
+  }
+}
+
+// ======= Dibujar cartones =======
+function renderCards(){
+  const wrap=document.getElementById('cards');
+  wrap.innerHTML='';
+  state.cards.forEach((c,idx)=>{
+    const sec=document.createElement('section');
+    sec.className='card';
+    if(c.line) sec.classList.add('winner');
+    if(c.full) sec.classList.add('bingo');
+    const head=document.createElement('header');
+    const h=document.createElement('h3');
+    h.innerHTML=`<input value="${c.name}" data-id="${c.id}" class="name" style="background:transparent;border:none;color:inherit;outline:none;font-weight:700;width:70%"> <span class="note">#${idx+1}</span>`;
+    head.appendChild(h); sec.appendChild(head);
+
+    const grid=document.createElement('div');
+    grid.className='grid';
+    const labels=['B','I','N','G','O'];
+    labels.forEach(l=>{const lab=document.createElement('div');lab.className='cell';lab.style.fontWeight='700';lab.textContent=l;grid.appendChild(lab)});
+    for(let r=0;r<5;r++){
+      for(let c2=0;c2<5;c2++){
+        const val=state.cards[idx].grid[r][c2];
+        const btn=document.createElement('button');
+        btn.className='cell'+(val==='FREE'?' free hit':'');
+        btn.textContent=val;
+        btn.dataset.r=r; btn.dataset.c=c2; btn.dataset.card=idx;
+        if(state.cards[idx].marks[r][c2]) btn.classList.add('mark');
+        btn.addEventListener('click',()=>{
+          toggleMark(idx,r,c2);
+        });
+        grid.appendChild(btn);
+      }
+    }
+    const box=document.createElement('div');
+    box.style.padding='0 12px 12px';
+    box.innerHTML=`<div class="note">Marca manualmente o activa Auto‑marcar para que se coloreen al salir los números.</div>`;
+    sec.appendChild(grid); sec.appendChild(box);
+    wrap.appendChild(sec);
+  });
+}
+
+function toggleMark(ci,r,c){
+  const card=state.cards[ci];
+  card.marks[r][c]=!card.marks[r][c];
+  evaluateCard(card);
+  renderCards();
+}
+
+function evaluateCard(card){
+  const M=card.marks;
+  const rowWin = M.some(row=>row.every(Boolean));
+  const colWin = [0,1,2,3,4].some(c=>M[0][c]&&M[1][c]&&M[2][c]&&M[3][c]&&M[4][c]);
+  const diag1 = M[0][0]&&M[1][1]&&M[2][2]&&M[3][3]&&M[4][4];
+  const diag2 = M[0][4]&&M[1][3]&&M[2][2]&&M[3][1]&&M[4][0];
+  card.line = rowWin || colWin || diag1 || diag2;
+  card.full = M.flat().every(Boolean);
+  if(card.full && !card.announced){ card.announced=true; showBingo(card); }
+}
+
+// ======= Generar N cartones =======
+function generateCards(n){
+  state.cards = Array.from({length:n},(_,i)=>makeCard(i+1));
+  renderCards();
+}
+
+// ======= Sorteo =======
+function draw(){
+  if(state.drawn.size>=75) return;
+  let n; do{ n=rand(1,75);}while(state.drawn.has(n));
+  const L = letterFor(n);
+  state.drawn.add(n); state.order.push(n);
+  document.getElementById('count').textContent = state.drawn.size;
+  document.getElementById('last').textContent = n;
+  updateLast5();
+  renderBoard();
+  if(document.getElementById('autoMark').checked){
+    autoMark(n);
+  }
+}
+
+function autoMark(n){
+  state.cards.forEach(card=>{
+    for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+      const v=card.grid[r][c];
+      if(v==='FREE') { card.marks[2][2]=true; continue; }
+      if(v===n){ card.marks[r][c]=true; }
+    }
+    evaluateCard(card);
+  });
+  renderCards();
+}
+
+function showBingo(card){
+  const modal=document.getElementById('bingoModal');
+  document.getElementById('bingoWho').textContent = `${card.name} ha llenado todo el cartón.`;
+  modal.classList.add('show');
+  setTimeout(()=>{ try{ document.querySelector('.card.bingo, .card.winner')?.scrollIntoView({behavior:'smooth',block:'center'});}catch(_){} }, 50);
+}
+
+function undo(){
+  const n = state.order.pop();
+  if(n==null) return;
+  state.drawn.delete(n);
+  document.getElementById('count').textContent = state.drawn.size;
+const prev = state.order[state.order.length-1];
+document.getElementById('last').textContent = prev? `${letterFor(prev)}-${prev}` : '—';
+  updateLast5();
+  renderBoard();
+  // desmarcar automarcados de ese número
+  state.cards.forEach(card=>{
+    for(let r=0;r<5;r++) for(let c=0;c<5;c++){
+      if(card.grid[r][c]===n){ card.marks[r][c]=false; }
+    }
+    evaluateCard(card);
+  });
+  renderCards();
+}
+
+function resetAll(){
+  state.drawn.clear(); state.order.length=0; document.getElementById('count').textContent=0; document.getElementById('last').textContent='—';
+  updateLast5();
+  renderBoard();
+  state.cards.forEach(card=>{ card.marks=[...Array(5)].map(()=>Array(5).fill(false)); card.marks[2][2]=true; card.line=false; card.full=false; card.announced=false; });
+  renderCards();
+}
+
+function updateLast5(){
+  const box=document.getElementById('last5');
+  box.innerHTML='';
+  const recent=state.order.slice(-5).reverse();
+  recent.forEach(n=>{const b=document.createElement('span');b.className='chip';b.textContent=`${letterFor(n)}-${n}`;box.appendChild(b)});
+}
+
+// ======= Eventos de UI =======
+const btnDraw=document.getElementById('btnDraw');
+const btnUndo=document.getElementById('btnUndo');
+const btnReset=document.getElementById('btnReset');
+const btnGen=document.getElementById('btnGen');
+const players=document.getElementById('players');
+
+btnDraw.addEventListener('click',draw);
+btnUndo.addEventListener('click',undo);
+btnReset.addEventListener('click',resetAll);
+btnGen.addEventListener('click',()=>{generateCards(Math.max(1,Math.min(24,parseInt(players.value||'1',10))))});
+
+document.getElementById('cards').addEventListener('input', (e)=>{
+  if(e.target.classList.contains('name')){
+    const id=parseInt(e.target.dataset.id,10);
+    const card=state.cards.find(c=>c.id===id); if(card){card.name=e.target.value}
+  }
+});
+
+document.getElementById('btnPrint').addEventListener('click',()=>window.print());
+
+// ======= Helpers =======
+function letterFor(n){
+if(n>=1 && n<=15) return 'B';
+if(n>=16 && n<=30) return 'I';
+if(n>=31 && n<=45) return 'N';
+if(n>=46 && n<=60) return 'G';
+return 'O';
+}
+
+// Modal events
+const modal=document.getElementById('bingoModal');
+const btnClose=document.getElementById('btnCloseModal');
+const btnContinue=document.getElementById('btnContinue');
+[btnClose,btnContinue].forEach(b=>b.addEventListener('click',()=>modal.classList.remove('show')));
+window.addEventListener('keydown',(e)=>{ if(e.key==='Escape') modal.classList.remove('show'); });
+
+// ======= Inicialización =======
+(function init(){
+  generateCards(parseInt(players.value,10));
+  renderBoard();
+})();
+</script>
+</body>
+</html>
