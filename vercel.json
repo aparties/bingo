@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/", "destination": "/main.html" }
+  ],
   "redirects": [
     { "source": "/main.html", "destination": "/", "permanent": true }
   ]
